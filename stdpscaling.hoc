@@ -1,0 +1,136 @@
+load_file("writedata.hoc") // Allow periodic saving of data to disk
+
+print "Loading stdpscaling.hoc..."
+// stdpscaling.hoc
+// Mark Rowan, School of Computer Science, University of Birmingham, UK
+// September 2012
+
+// Code to enable synaptic scaling whilst STDP is active (set in params.hoc; see below)
+// to investigate whether scaling helps to balance excitatory potentiation and
+// avoid transition to epilepsy.
+
+// **********************************************************************
+// REQUIREMENTS:
+// run.hoc should have SPKSZ set to at least 1400e3 elements (assuming 800e3 ms segmentlength and 1 col)
+// run.hoc should have prl(0,1) as the last line in the file to turn off printlist recording
+//
+// params.hoc should have PreDur, LearnDur, PostDur and other params set appropriately
+// params.hoc should have TrairRate (training signal freq, Hz) set
+// params.hoc should have TrainW (training signal weight) set
+//
+// Other key values in params.hoc:
+//   plastEEinc/plastEIinc/plastIEinc/plastIIinc -- increment amount for adding to weights
+//     (in paper, these are 0.05, 0.10, 0.05, 0.05 respectively)
+//  plastEEmaxw/plastEImaxw/plastIEmaxw/plastIImaxw -- max increase in weight from baseline
+//     (in paper, these are 10, 15, 3, 3 respectively)
+// **********************************************************************
+
+
+// **** User-settable parameters ****
+// Scaling params
+declare("scaling", 1) // Set to 1 to enable compensatory homeostatic synaptic scaling
+declare("activitytau", 100e3) // Activity sensor time constant
+declare("activitybeta", 4.0e-8) // Scaling weight
+declare("activitygamma", 1.0e-10) // Scaling integral controller weight
+declare("scalingstart", 800e3) // Time after which to begin synaptic scaling (needs to be long enough for the activity sensors to accurately estimate average firing rates)
+numcells = 470 * scale // Number of cells in the network (set in network.hoc:77 and :124)
+
+// Recording params
+declare("recording_interval", 10e3) // How many ms between scalefactor recordings
+declare("recording_start", 5e3) // Start recording scalefactors after this time 
+
+
+// Define objects
+objref remainingcellIDs, randgen, deletionList, auxFile, varsFile
+strdef auxFileName
+strdef varsFileName
+
+
+proc setup() {
+  // Initialise RNG
+  randgen = new Random()
+
+  // Set scaling parameters in INTF6
+  col.ce.o(0).setactivitytau(activitytau)
+  col.ce.o(0).setactivitygamma(activitygamma)
+  col.ce.o(0).setactivitybeta(activitybeta)
+
+  // Create data file
+  // filepath should already have been allocated in writedata.hoc
+  sprint(auxFileName, "%s/%s", filepath, "aux")
+  sprint(varsFileName, "%s/%s", filepath, "vars")
+  auxFile = new File(auxFileName)
+  varsFile = new File(varsFileName)
+  header_written = 0 // Instruct write_scaling_data() to write vars file header
+}
+
+
+proc turn_on_scaling() {
+  if (scaling) {
+    printf("Turning on synaptic scaling\n")
+    col.ce.o(0).setscaling(1)
+  }
+}
+
+
+proc write_scaling_data() { local k, id, act, trg, scl, type, dead
+
+  if (!header_written) {
+    // Write vars file header
+    varsFile.aopen()
+    varsFile.printf("# ************* Runtime params *************\n")
+
+    varsFile.printf("buffertime=%d\n", buffertime)
+    varsFile.printf("numcells=%d\n", numcells)
+    varsFile.printf("scaling=%d\n", scaling)
+    varsFile.printf("scalingstart=%d\n", scalingstart)
+    varsFile.printf("recording_interval=%d\n", recording_interval)
+    varsFile.printf("t_start=%d\n", recording_start)
+    varsFile.printf("activitytau=%e\n", activitytau)
+    varsFile.printf("activitybeta=%e\n", activitybeta)
+    varsFile.printf("activitygamma=%e\n", activitygamma)
+            
+    varsFile.printf("\n# Cell ID, cell type, activity sensor, target activity, scaling factor, is-dead\n")
+    varsFile.printf("# Recorded every %d ms\n", recording_interval)
+    varsFile.close()
+    header_written = 1
+  }
+  
+  // Open aux file for append
+  auxFile.aopen()
+
+  // Record current time
+  auxFile.printf("t = %f\n", t)
+
+  // Write data to given file
+  for k=0,numcells-1 {
+    id = col.ce.o(k).get_id()
+    act = col.ce.o(k).get_activity()
+    trg = col.ce.o(k).get_target_act()
+    scl = col.ce.o(k).get_scale_factor()
+    type = col.ce.o(k).get_type()
+    dead = col.ce.o(k).get_dead()
+    auxFile.printf("%d,%d,%f,%f,%f,%d\n", id,type,act,trg,scl,dead)
+    //printf("%d,%d,%f,%f,%f,%d\n", id,type,act,trg,scl,dead)
+  }
+
+  // Close file
+  auxFile.close()
+  
+  // Queue next event
+  cvode.event(t+recording_interval, "write_scaling_data()")
+}
+
+
+// Callback procedure to start the event queue
+// NOTE: Only called once, after hoc file initialised and run() has been called
+proc stdpscalingeventqueue() {
+  cvode.event(scalingstart, "turn_on_scaling()") // Start scaling after initial delay to find activity
+  cvode.event(t + recording_start, "write_scaling_data()") // Start recording of scalefactors etc
+}
+
+
+
+setup()
+declare("stdpfih", new FInitializeHandler("stdpscalingeventqueue()")) // Called as soon as INIT finishes
+

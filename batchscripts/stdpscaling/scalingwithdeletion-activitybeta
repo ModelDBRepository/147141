@@ -1,0 +1,25 @@
+#!/bin/sh
+# To test whether scaling is able to compensate for gradual deletion over a long
+# period of time
+# Run for various values of activitybeta (scaling strength)
+
+
+# Set save path
+datadir="/home/archive/users/rowanms-data/stdpscaling/scalingwithdeletion"
+
+# Set name of parameter to vary
+var="activitybeta"
+
+# Set list of values to try
+vals="4e-5 4e-6 4e-7 4e-8 4e-9 4e-10 4e-11 4e-12"
+
+# Set non-varying parameters with '-c' prefix
+# e.g. args="-c {activitybeta=10e-7} -c {activitytau=100e3}"
+
+# Run alz.hoc instead of stdp_scaling.hoc, for deletion
+# Turn on scaling after 1000s
+# Run for 160000 s of sim with no training
+# Delete 2 neurons at a time, every 1600 s (total deletion = 200 cells)
+args="-c {stdpsim=0} -c {scaling=1} -c {scalingstart=1000e3} -c {segmentlength=1600e3} -c {PreDur=160000} -c {LearnDur=0} -c {deletionstep=2}"
+
+./batchcommon $datadir $var "$vals" "$args"

@@ -1,0 +1,30 @@
+#!/bin/sh
+# Common logic to take a selection of variables and values and spawn a load of relevant cluster jobs
+# Data will be saved at $datadir/$var$val by default using this script
+
+datadir=$1 # Base save path
+var=$2 # Parameter to vary
+vals=$3 # Array of values to assign to var
+args="$4" # Array of non-varying parameters (e.g. scaling=0)
+
+##################################
+
+for val in $vals; do
+
+  # Make savedir name
+  savepath="$datadir/$var$val"
+
+  # Create savedir
+  echo
+  echo "mkdir -p $savepath"
+  mkdir -p "$savepath"
+
+  export var
+  export val
+  export args
+  export savepath
+
+  # Run sim
+  echo "qsub -v var,val,args,savepath -o $savepath -e $savepath clusterrun.sh"
+  qsub -v var,val,args,savepath -o $savepath -e $savepath clusterrun.sh
+done

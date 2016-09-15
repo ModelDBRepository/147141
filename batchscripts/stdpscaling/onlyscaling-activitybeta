@@ -1,0 +1,23 @@
+#!/bin/sh
+# To test whether scaling is stable over long periods of time, i.e. does not
+# destabilise firing and force network into epilepsy / silence.
+# Run for various values of activitybeta (scaling strength)
+
+
+# Set save path
+datadir="/home/archive/users/rowanms-data/stdpscaling/onlyscaling"
+
+# Set name of parameter to vary
+var="activitybeta"
+
+# Set list of values to try
+vals="4e-5 4e-6 4e-7 4e-8 4e-9 4e-10 4e-11 4e-12"
+
+# Set non-varying parameters with '-c' prefix
+# e.g. args="-c {activitybeta=10e-7} -c {activitytau=100e3}"
+
+# Turn on scaling after 1000s
+# Run for 160000 s (~44hrs) of sim time
+args="-c {stdpsim=1} -c {scaling=1} -c {PreDur=160000} -c {PostDur=0} -c {LearnDur=0}"
+
+./batchcommon $datadir $var "$vals" "$args"

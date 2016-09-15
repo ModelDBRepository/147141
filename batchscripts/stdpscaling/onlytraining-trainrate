@@ -1,0 +1,19 @@
+#!/bin/sh
+# Try to replicate experiments from Neymotin paper in which training is on
+# (i.e. no synaptic scaling). For various training signal frequencies.
+
+# Set save path
+datadir="/home/archive/users/rowanms-data/stdpscaling/onlytraining"
+
+# Set name of parameter to vary
+var="TrainRate"
+
+# Set list of values to try
+vals="2 4 6 8 10 12 14 16"
+
+# Set non-varying parameters with '-c' prefix
+# e.g. args="-c {activitybeta=10e-7} -c {activitytau=100e3}"
+# Turn off scaling
+args="-c {stdpsim=1} -c {scaling=0}"
+
+./batchcommon $datadir $var "$vals" "$args"

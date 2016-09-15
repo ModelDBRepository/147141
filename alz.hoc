@@ -1,0 +1,270 @@
+load_file("writedata.hoc") // Allow periodic saving of data to disk
+
+print "Loading alz.hoc..."
+// alz.hoc
+// Mark Rowan, School of Computer Science, University of Birmingham, UK
+// April 2012
+
+// Code to Repeatedly delete neurons, allow synaptic compensation, and perform
+// repeat+unique trials for calculating Fourier information (Crumiller et al. 2011).
+
+// **********************************************************************
+// REQUIREMENTS:
+// Set buffertime in writedata.hoc to an appropriate length of time (e.g. 1600e3)
+// run.hoc: SPKSZ should be at least 2500e3 elements (assuming buffertime=1600e3 and scale=1)
+// run.hoc: should have prl(0,1) as the last line in the file to turn off printlist recording
+// params.hoc: should have PreDur = segmentlength * (deletionstep/numcells) seconds (e.g. 160e3 s)
+// **********************************************************************
+
+// Repeat until all neurons deleted (at 1600s per segment = 160 000s = ~44hrs of data):
+//   Delete deletionstep neurons (either randomly, or proportional to scale factor)
+//   Allow AMPA and GABA synapses to compensate (doing it in only 1600s here, not "hours to days"!)
+//   Present alternate 80s trials of 'unique' and 'repeat' stimulation for Fourier info calculation
+
+
+// **** User-settable parameters ****
+// Scaling params
+declare("scaling", 1) // Set to 1 to enable compensatory homeostatic synaptic scaling
+declare("activitytau", 100e3) // Activity sensor time constant
+declare("activitybeta", 4.0e-8) // Scaling weight
+declare("activitygamma", 1.0e-10) // Scaling integral controller weight
+declare("scalingstart", buffertime) // Time after which to begin synaptic scaling (needs to be long enough for the activity sensors to reach approximately the real average firing rate)
+declare("scaleexternal", 1) // Should we scale down the external inputs proportionally to the network deletion?
+declare("scaleexternalrate", 0.25) // Vary the external scaledown constant
+
+// Deletion params
+declare("randomdelete", 1) // Set to 1 for uniform random deletion, or 0 for scaling-proportional deletion
+declare("deletionstep", 5 * scale) // Delete this many cells per round
+
+// Timing params
+declare("segmentlength", buffertime) // How long is allocated to one round of deletion + compensation trials?
+declare("infotriallength", 80e3) // Length (ms) of unique+repeat Fourier information trials
+numcells = 470 * scale // Number of cells in the network (set in network.hoc:77 and :124)
+
+// Recording params
+declare("recording_interval", 100e3) // How many ms between scalefactor/activity/etc recordings
+declare("recording_start", 5e3) // Start recording data after this time
+
+
+// Define objects
+objref remainingcellIDs, randgen, deletionList, auxFile, varsFile
+strdef auxFileName
+strdef varsFileName
+
+
+proc setup() {
+  // Set up list of remaining undeleted cells
+  remainingcellIDs = new Vector(numcells)
+  remainingcellIDs.indgen(1) // Generate elements from 0 to numcells-1
+
+  // Initialise RNG
+  randgen = new Random()
+
+  // Set scaling parameters in INTF6
+  col.ce.o(0).setactivitytau(activitytau)
+  col.ce.o(0).setactivitygamma(activitygamma)
+  col.ce.o(0).setactivitybeta(activitybeta)
+
+  // Create data file
+  // filepath should already have been allocated in writedata.hoc
+  sprint(auxFileName, "%s/%s", filepath, "aux")
+  sprint(varsFileName, "%s/%s", filepath, "vars")
+  auxFile = new File(auxFileName)
+  varsFile = new File(varsFileName)
+  header_written = 0 // Instruct write_scaling_data() to write vars file header
+}
+
+
+proc turn_on_scaling() {
+  if (scaling) {
+    printf("Turning on synaptic scaling\n")
+    col.ce.o(0).setscaling(1)
+  }
+}
+
+
+proc deletionround() { local i, deleted, temp, gain
+  printf("*** %d cells remaining, deleting %d\n", remainingcellIDs.size(), deletionstep)
+  deletionList = new Vector() // Reset deletionList
+
+  // Obtain list of cells to be deleted (either at uniform random, or proportional to compensation)
+  deleted = 0
+  while (deleted < deletionstep) {
+  
+    if (randomdelete) {
+      // Delete at uniform random
+      randgen.uniform(0, remainingcellIDs.size()) // Uniform-random over 0 to number of remaining cells
+      temp = remainingcellIDs.x[int(randgen.repick())] // Get random cell index from remainingcellIDs
+    } else {
+      // TODO Delete randomly in proportion to compensation rates
+      temp = 0
+    }
+
+    if (!deletionList.contains(temp)) {
+      deleted = deleted + 1
+      printf("Deleting cell %d\n", temp)
+      deletionList.append(temp) // Only append index if it's unique
+      remainingcellIDs.remove(remainingcellIDs.indwhere("==", temp)) // Remove from list of remaining cells
+    }
+  }
+  
+  for vtr(&id,deletionList) {
+    // Delete cells in deletionList
+    printf("Cell %d scalefactor = %f\n", id, col.ce.o(id).get_scale_factor())
+    // Write deletionlist and compensation rates of deleted cells to file
+    col.ce.o(id).flag("dead",1) // Borrowed from network.hoc:dokill()
+    //printf("%d\n", col.ce.o(id).get_id())
+  }
+
+  if (scaleexternal) {
+    scaledown() // Scale external input weights down as the network is deleted
+  }
+
+  // While there are still cells to delete, queue another round of deletion
+  if (remainingcellIDs.size() > deletionstep) {
+    cvode.event(t + segmentlength, "deletionround()") 
+  }
+}
+
+
+proc scaledown() { local c,i,vhz,a,sy,ct,idx,sdx localobj vsy,nc
+  // Reduce strength of external inputs linearly as deletion progresses.
+  // Should be reasonable, as if other columns (represented by external inputs) are also
+  // suffering atrophy, their output strengths (to this model's column) will be reduced too.
+  a=allocvecs(vsy)
+  vsy.append(GA) vsy.append(GA2) vsy.append(AM2) vsy.append(NM2)
+  //setwmatex() // Reinitialise weights matrix
+  //gain = remainingcellIDs.size() / numcells
+  gain = 1 - ((1 - (remainingcellIDs.size() / numcells)) * scaleexternalrate)
+
+  printf("External input gain: %f\n", gain)
+
+  // For each CSTIM in lcstim
+  for c = 0, lcstim.count-1 {
+    i = 0 // Increment through the NetCon objects within this CSTIM
+    // For each NetCon in ncl (based on col.hoc proc nsstim) -- based on col.hoc proc nsstim()
+    for sdx=0,vsy.size-1 {
+      sy=vsy.x(sdx) // go through synapse types
+      for ct=0,CTYPi-1 if(col.numc[ct] && wmatex[ct][sy] && ratex[ct][sy]) {//go through cell types, check weights,rates of inputs 
+        for idx = col.ix[ct], col.ixe[ct] {
+          //printf("idx %d\n", idx)
+          // For each cell of type ct (idx is id of the cell)
+          // change the weights according to the new values in wmatex, scaled down by gain
+          lcstim.o(c).ncl.o(i).weight(sy) = lcstim.o(c).wmatex[ct][sy] * gain
+          //printf("c %d, i %d, weight %f\n", c, i, lcstim.o(c).ncl.o(i).weight(sy))
+          i = i + 1 // Increment to next NetCon in the list
+        }
+      }
+    }
+  }
+  dealloc(a)
+}
+
+
+// TODO Check that CSTIMs are indeed alternating between 'fixed' and 'unique'
+proc repeattrialcstim() { local i,j,inputseed
+  // Set CSTIMs to use a sequence from a fixed seed for Fourier info calculation
+  // At 80000ms per stim, this should give 10 * repeat and 10 * unique trials in 1600s
+  cvode.event(t + infotriallength, "uniquetrialcstim()") // Queue next 'unique' stimulation trial
+
+  printf("Initiate repeat trials for %d ms\n", infotriallength)
+  inputseed = 1234 // Fixed seed
+
+  for i=0,lcol.count-1 {
+    for j=0,lcstim.o(i).vrse.size-1 {
+      lcstim.o(i).vrse.x[j] = inputseed+j // Store random seeds for each nstim
+    }
+    lcstim.o(i).initrands() // Reinitialise the external inputs' RNGs
+    // TODO Does this restart CSTIM from t=0 (i.e. produce identical stim each time)
+    // or does it continue from current t, thereby not producing identical stims?
+  }
+}
+
+
+proc uniquetrialcstim() { local i,j,inputseed
+  // Set CSTIMs to use a sequence from current sim clock time 't' for Fourier info calculation
+  // At 80000ms per stim, this should give 10 * repeat and 10 * unique trials in 1600s
+  cvode.event(t + infotriallength, "repeattrialcstim()") // Queue next 'repeat' stimulation trial
+
+  printf("Initiate unique trials for %d ms\n", infotriallength)  
+  inputseed = t+1 // Seed set from clock (i.e. pseudo-randomly set) 
+
+  for i=0,lcol.count-1 {
+    for j=0,lcstim.o(i).vrse.size-1 {
+      lcstim.o(i).vrse.x[j] = inputseed+j // Store random seeds for each nstim
+    }
+    lcstim.o(i).initrands() // Reinitialise the external inputs' RNGs
+  }
+}
+
+
+proc write_scaling_data() { local k, id, act, trg, scl, type, dead
+
+  if (!header_written) {
+    // Write vars file header
+    varsFile.aopen()
+    varsFile.printf("# ************* Runtime params *************\n")
+ 
+    varsFile.printf("buffertime=%d\n", buffertime)
+    varsFile.printf("numcells=%d\n", numcells)
+    varsFile.printf("scaling=%d\n", scaling)
+    varsFile.printf("scalingstart=%d\n", scalingstart)
+    varsFile.printf("scaleexternal=%d\n", scaleexternal)
+    varsFile.printf("scaleexternalrate=%f\n", scaleexternalrate)
+    varsFile.printf("randomdelete=%d\n", randomdelete)
+    varsFile.printf("deletionstep=%d\n", deletionstep)
+    varsFile.printf("segmentlength=%d\n", segmentlength)
+    varsFile.printf("infotriallength=%d\n", infotriallength)
+    varsFile.printf("recording_interval=%d\n", recording_interval)
+    varsFile.printf("t_start=%d\n", recording_start)
+    varsFile.printf("activitytau=%e\n", activitytau)
+    varsFile.printf("activitybeta=%e\n", activitybeta)
+    varsFile.printf("activitygamma=%e\n", activitygamma)
+            
+    varsFile.printf("\n# Cell ID, cell type, activity sensor, target activity, scaling factor, is-dead\n")
+    varsFile.printf("# Recorded every %d ms\n", recording_interval)
+    varsFile.close()
+    header_written = 1
+  }
+  
+  // Open aux file for append
+  auxFile.aopen()
+
+  // Record current time
+  auxFile.printf("t = %f\n", t)
+
+  // Write data to given file
+  for k=0,numcells-1 {
+    id = col.ce.o(k).get_id()
+    act = col.ce.o(k).get_activity()
+    trg = col.ce.o(k).get_target_act()
+    scl = col.ce.o(k).get_scale_factor()
+    type = col.ce.o(k).get_type()
+    dead = col.ce.o(k).get_dead()
+    auxFile.printf("%d,%d,%f,%f,%f,%d\n", id,type,act,trg,scl,dead)
+    //printf("%d,%d,%f,%f,%f,%d\n", id,type,act,trg,scl,dead)
+  }
+
+  // Close file
+  auxFile.close()
+  
+  // Queue next event
+  cvode.event(t+recording_interval, "write_scaling_data()")
+}
+
+
+// Callback procedure to start the event queue
+// NOTE: Only called once, after hoc file initialised and run() has been called
+proc deletioneventqueue() {
+  // Set up CSTIMs
+  cvode.event(t, "uniquetrialcstim()") // Start alternating 'unique+random' trials
+  cvode.event(scalingstart, "turn_on_scaling()") // Start scaling after initial delay to find activity
+  cvode.event(t + segmentlength, "deletionround()") // Call deletionround() after segmentlength ms
+  cvode.event(t + recording_start, "write_scaling_data()") // Start recording of scalefactors etc
+}
+
+
+
+setup()
+declare("alzfih", new FInitializeHandler("deletioneventqueue()")) // Called as soon as INIT finishes
+

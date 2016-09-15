@@ -1,0 +1,20 @@
+#!/bin/sh
+# Training with STDP whilst synaptic scaling is switched on, for various
+# STDP increment rates, to see if scaling balances out the epileptiform behaviour
+# and can prevent it from happening, even with unlimited STDP weight changes
+
+# Set save path
+datadir="/home/archive/users/rowanms-data/stdpscaling/STDPtinkering/onlytrainingAllTrainRand"
+
+# Set name of parameter to vary
+var="plastEEinc"
+
+# Set list of values to try
+vals="0.0001 0.0005 0.001 0.005 0.01 0.05"
+
+# Set non-varying parameters with '-c' prefix
+# e.g. args="-c {activitybeta=10e-7} -c {activitytau=100e3}"
+# Turn on scaling, increase scaling strength (beta and gamma), and set max STDP weight to large value
+args="-c {stdpsim=1} -c {scaling=0} -c {plastEEmaxw=1e10} -c {TrainRand=1}"
+
+./batchcommon $datadir $var "$vals" "$args"

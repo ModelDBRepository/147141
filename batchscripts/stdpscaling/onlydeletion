@@ -1,0 +1,24 @@
+#!/bin/sh
+# To show that network activity dies out when cells are deleted and external
+# inputs are scaled down (i.e. to demonstrate the necessity of scaling)
+# For various different deletion rates (1-5 cells per step => 100-500 deleted by end)
+
+
+# Set save path
+datadir="/home/archive/users/rowanms-data/stdpscaling/onlydeletion"
+
+# Set name of parameter to vary
+var="deletionstep"
+
+# Set list of values to try
+vals="1 2 3 4 5"
+
+# Set non-varying parameters with '-c' prefix
+# e.g. args="-c {activitybeta=10e-7} -c {activitytau=100e3}"
+
+# Run alz.hoc instead of stdp_scaling.hoc, for deletion
+# Don't turn on scaling
+# Run for 160000 s of sim with no training or post-training recall
+args="-c {stdpsim=0} -c {scaling=0} -c {PreDur=160000} -c {segmentlength=1600e3} -c {LearnDur=0} -c {PostDur=0}"
+
+./batchcommon $datadir $var "$vals" "$args"

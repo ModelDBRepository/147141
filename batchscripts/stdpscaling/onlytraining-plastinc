@@ -1,0 +1,19 @@
+#!/bin/sh
+# Turn on STDP with various different plasticity increment values to see
+# whether scaling can catch-up with STDP before epilepsy
+
+# Set save path
+datadir="/home/archive/users/rowanms-data/stdpscaling/onlytraining"
+
+# Set name of parameter to vary
+var="plastEEinc"
+
+# Set list of values to try
+vals="0.0001 0.0005 0.001 0.005 0.01 0.05"
+
+# Set non-varying parameters with '-c' prefix
+# e.g. args="-c {activitybeta=10e-7} -c {activitytau=100e3}"
+# Turn off scaling
+args="-c {stdpsim=1} -c {scaling=0}"
+
+./batchcommon $datadir $var "$vals" "$args"
