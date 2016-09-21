@@ -859,7 +859,7 @@ double entropxfgxpd (double* pXP, double* pXFXP,int minv,int maxv,int szp) {
       if (usetable && tmp[3]>=MINLOG2 && tmp[3]<=MAXLOG2) {
         tmp[0] -=tmp[2]*_n_LOG2(tmp[3]);
       } else {  tmp[0] -=tmp[2]*  log2d(tmp[3]); if (usetable&&verbose>0.4) { 
-          printf("WARNA:%g outside of [%g,%g] TABLE\n",tmp[4],MINLOG2,MAXLOG2); }}}}
+          printf("WARNA:%g outside of [%g,%g] TABLE\n",tmp[3],MINLOG2,MAXLOG2); }}}}
   return tmp[0];        
 }
 
@@ -1193,6 +1193,7 @@ static double pdfpr (double* pdf,int szp,int dim, char* name) {
     }
   }
   printf("ds (%s) = %g\n",name,ds);
+  return 0.0;
 }
 
 //* other funcs
