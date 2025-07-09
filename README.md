@@ -77,7 +77,6 @@ batchscripts/<script>
 
 ## Changelog
 
-20160921 Updates from the Lytton lab that allow the model to run on  
-mac OS X.
+20160921 Updates from the Lytton lab that allow the model to run on mac OS X.
 
 20250709 Converted README to Markdown.
