@@ -1,13 +1,7 @@
 # Introduction
-This is the source code for the model which was used in the paper "Synaptic  
-Scaling Balances Learning in a Spiking Model of Neocortex" by Mark Rowan and  
-Samuel Neymotin.
+This is the source code for the model which was used in the paper "Synaptic Scaling Balances Learning in a Spiking Model of Neocortex" by Mark Rowan and Samuel Neymotin.
 
-To generate data for the figures in the paper, follow the instructions under  
-'compiling' (below) then run the relevant commands from the following list. Be  
-aware that some of the experiments will take a couple of days to run and will  
-produce large amounts of data (> 2GB) due to the very long amounts of time being  
-simulated (~44 hours).
+To generate data for the figures in the paper, follow the instructions under 'compiling' (below) then run the relevant commands from the following list. Be aware that some of the experiments will take a couple of days to run and will produce large amounts of data (> 2GB) due to the very long amounts of time being simulated (~44 hours).
 
 # Figures
 ## Figure 2 (long run):
@@ -32,8 +26,7 @@ simulated (~44 hours).
 ```
 
 # Creating plots
-Plots can be created using `python plot.py <datadir> <plot1>: <plot2>`  
-(requires various Python packages including matplotlib, numpy, and mtspec).
+Plots can be created using `python plot.py <datadir> <plot1>: <plot2>` (requires various Python packages including matplotlib, numpy, and mtspec).
 
 e.g. to create Figure 3:  
 ```bash
@@ -46,8 +39,7 @@ python plot.py data/trainingandscaling power
 ```
 
 # Compiling
-Change to the 'mod' directory and run the command `mkmod` to build the necessary  
-.mod files.
+Change to the 'mod' directory and run the command `mkmod` to build the necessary .mod files.
 
 # Running the sim
 Execute the simulation directly using `./runsim.sh [savepath] [optional args]`
@@ -60,11 +52,7 @@ e.g.
 (which runs STDP sim)
 
 # Batch runs
-To run multiple experiments in a batch on a cluster (e.g. to get results over  
-various different values of activitytau), create a basic script in batchscripts  
-and fill in the variable name, values, and optional arguments. (See the scripts  
-already inside batchscripts for examples). This is currently set up to use a  
-GridEngine cluster, but you can edit clusterrun.sh to change cluster settings.
+To run multiple experiments in a batch on a cluster (e.g. to get results over various different values of activitytau), create a basic script in batchscripts and fill in the variable name, values, and optional arguments. (See the scripts already inside batchscripts for examples). This is currently set up to use a GridEngine cluster, but you can edit clusterrun.sh to change cluster settings.
 
 To execute:  
 ```bash
@@ -87,9 +75,9 @@ batchscripts/<script>
          |  stdp_scaling.hoc OR alz.hoc  (chosen by setting stdpsim=1/0)
 ```
 
+## Changelog
+
 20160921 Updates from the Lytton lab that allow the model to run on  
 mac OS X.
 
----
-
-2025-07-09: Converted README to Markdown.
+20250709 Converted README to Markdown.
